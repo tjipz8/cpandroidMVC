@@ -1,0 +1,247 @@
+﻿<div data-role="page">
+    <div data-role="header">
+        <h1>Cpod</h1>
+    </div>
+    <!-- /header -->
+    <!--<button id="allBtn" ng-click="getAll()" data-role="button">All</button>-->
+    <button id="randomBtn" ng-click="getRandom()" data-role="button">Random</button>
+    <div ng-show="loading">
+        <my-widget />
+    </div>
+    <div data-role="content">
+        <div id="lessonCount">{{(lessons|lessonFilter:selectfilter.level).length}}</div>
+        <form ng-submit="getSearchLesson(search)">
+            <div class=ui-grid-a>
+                <div class=ui-block-a style="width: 60% !important;">
+                    <input ng-model="search" type="text">
+                </div>
+                <div class=ui-block-b style="width: 40% !important;" ng-click="getSearchLesson(search)"><a data-role="button" href='#'>Search</a></div>
+            </div>
+        </form>
+        <select name="select-choice-0" id="select-choice-0" ng-model="selectfilter.level">
+            <option value="all">All level</option>
+            <option value="intermediate">Intermediate</option>
+            <option value="upper intermediate">Upper Intermediate</option>
+            <option value="advanced">Advanced</option>
+            <option value="media">Media</option>
+        </select>
+        <ul id="lessonlist" data-role="listview" data-inset="true" infinite-scroll="loadMore()">
+            <li data-role="list-divider" ng-repeat-start="lesson in lessons | lessonFilter:selectfilter.level | orderBy:'id':true">
+            </li>
+            <li ng-repeat-end>
+                <div class=ui-grid-a>
+                    <div class=ui-block-a style="width: 40% !important;"><img ng-src={{lesson.img}} /></div>
+                    <div class=ui-block-b style="width: 60% !important;">
+                        <h2>{{lesson.id}}</h2>
+                        <h2>{{lesson.level}}</h2>
+                        <h2>{{lesson.title}}</h2>
+                    </div>
+                </div>
+                <p style="white-space:normal" ng-if="lesson.desc">{{lesson.desc}}</p>
+                <a href='{{lesson.url}}' data-inline="true" data-mini="true" data-role="button">mp3</a>
+                <!--<audio src='{{lesson.url |trusted}}' controls/>-->
+                <a href='{{lesson.vocab}}' data-inline="true" data-mini="true" data-role="button">Transcript</a>
+            </li>
+        </ul>
+    </div>
+</div>
+<!-- /content -->
+<!-- /page -->
+<script type="text/javascript">
+        var cpodApp = angular.module('cpodApp', ['infinite-scroll']);
+        var currPage = 1;
+
+        cpodApp.filter('trusted', ['$sce', function ($sce) {
+            return function (url) {
+                return $sce.trustAsResourceUrl(url);
+            };
+        }]);
+
+        cpodApp.controller('LessonListCtrl', function LessonListCtrl($scope, $http) {
+            function getLessons(full) {
+                $scope.loading = true;
+                if (full) {
+                    $.getJSON("https://spreadsheets.google.com/feeds/list/0ApfyUP7eZZUEdG9YdFZkU2FqOVNLdUV5azVob015SHc/" + (full ? "1" : "2") + "/public/basic?alt=json-in-script&callback=?", function (resp) {
+                        $scope.$apply(function () {
+                            $scope.lessons = resp.feed.entry.map(function (obj) {
+                                var content = obj.content.$t.split(',');
+                                return {
+                                    id: parseInt(obj.title.$t),
+                                    title: content[0].replace("title: ", "").trim(),
+                                    level: content[1].replace("level: ", "").trim(),
+                                    url: content[2].replace("url: ", "").trim(),
+                                    vocab: content[3].replace("vocab: ", "").trim()
+                                };
+                            });
+                            //console.log(resp.feed.entry);
+                            //console.log($scope.lessons);
+                        });
+                    });
+                    $scope.loading = false;
+                } else {
+                    setLatestPageLessons(currPage);
+                }
+            }
+
+            function setLatestPageLessons(page) {
+
+                $http.get("/home/libraryLatest?page=" + page).then(function (resp) {
+                    $scope.loading = false;
+                    var inddiv = $(resp.data).find(".media").toArray();
+
+                    $scope.lessons = inddiv.map(function (e, i) {
+                        var src = $(e).find("img").attr("src");
+                        var _src = src.replace(src.split('/')[7], "{f}");
+                        var _level = $(e).find("a[title]")[0].innerText.trim();
+                        var _id = src.split('/')[4];
+
+                        return {
+                            id: _id,
+                            img: src,
+                            title: $(e).find("h4 a")[0].innerText,
+                            level: _level,
+                            desc: $(e).find("p")[0].innerText,
+                            vocab: _src.replace("chinesepod.com.s3.amazonaws.com", "s3contents.chinesepod.com").replace("images", "pdf").replace("{f}", "chinesepod_" + getLessonLetter(_level) + _id + ".html"),
+                            url: _src.replace("images", "mp3").replace("{f}", "chinesepod_" + getLessonLetter(_level) + _id + "pr.mp3")
+                        }
+
+                    }).filter(function (e) {
+                        //console.log(e.level);
+                        return e.level.indexOf('Advanced') > -1 || e.level.indexOf('Intermediate') > -1;
+                        //return true;
+                    });
+                })
+            }
+
+            function addPageLessons(page) {
+                $http.get("/home/libraryLatest?page=" + page).then(function (resp) {
+                    $scope.loading = false;
+                    var inddiv = $(resp.data).find(".media").toArray();
+
+                    var moreLesson = inddiv.map(function (e, i) {
+                        var src = $(e).find("img").attr("src");
+                        var _src = src.replace(src.split('/')[7], "{f}");
+                        var _level = $(e).find("a[title]")[0].innerText.trim();
+                        var _id = src.split('/')[4];
+
+                        return {
+                            id: _id,
+                            img: src,
+                            title: $(e).find("h4 a")[0].innerText,
+                            level: _level,
+                            desc: $(e).find("p")[0].innerText,
+                            vocab: _src.replace("chinesepod.com.s3.amazonaws.com", "s3contents.chinesepod.com").replace("images", "pdf").replace("{f}", "chinesepod_" + getLessonLetter(_level) + _id + ".html"),
+                            url: _src.replace("images", "mp3").replace("{f}", "chinesepod_" + getLessonLetter(_level) + _id + "pr.mp3")
+                        }
+
+                    }).filter(function (e) {
+                        //console.log(e.level);
+                        return e.level.indexOf('Advanced') > -1 || e.level.indexOf('Intermediate') > -1;
+                        //return true;
+                    });
+
+                    Array.prototype.push.apply($scope.lessons, moreLesson);
+                })
+            }
+
+
+
+            function getRandom() {
+                $scope.loading = true;
+                $http.get("/home/libraryLatest").then(function (resp) {
+
+                    return $(resp.data).find(".pagination li")[$(resp.data).find(".pagination li").length - 2].innerText
+
+                }).then(function (result) {
+
+                    var randPage = Math.floor((Math.random() * parseInt(result)) + 1);
+                    setLatestPageLessons(randPage);
+                })
+            }
+
+            function getLessonLetter(level) {
+                if (level == "Advanced") return "E";
+                else if (level == "Upper Intermediate") return "D";
+                else if (level == "Intermediate") return "C";
+                else return "B";
+            }
+
+            function getSearchLesson(search) {
+                $scope.loading = true;
+
+                $.get("/home/getSearchLesson?search=" + search, function (resp) {
+                    var maindiv = $("<html><body>" + resp + "</body></html>");
+                    var inddiv = maindiv.filter(".col-xs-6");
+                    $scope.$apply(function () {
+
+                        $scope.lessons = inddiv.map(function (i, e) {
+                            var src = $(e).find("img").attr("src");
+                            var _src = src.replace(src.split('/')[7], "{f}");
+                            var _level = $(e).find("a[title]")[0].innerText.trim();
+                            var _id = src.split('/')[4];
+
+                            return {
+                                id: _id,
+                                img: src,
+                                title: $(e).find("h3")[0].innerText,
+                                level: _level,
+                                desc: $(e).find("p")[0].innerText,
+                                vocab: _src.replace("chinesepod.com.s3.amazonaws.com", "s3contents.chinesepod.com").replace("images", "pdf").replace("{f}", "chinesepod_" + getLessonLetter(_level) + _id + ".html"),
+                                url: _src.replace("chinesepod.com.s3.amazonaws.com", "s3contents.chinesepod.com").replace("images", "mp3").replace("{f}", "chinesepod_" + getLessonLetter(_level) + _id + "pb.mp3")
+                            }
+
+                        })
+                            .get()
+
+                        //console.log(resp.feed.entry);
+                        //console.log($scope.lessons);
+                        $scope.loading = false;
+                    });
+                });
+            }
+
+            $scope.getRandom = function () {
+                getRandom();
+            };
+
+            $scope.getAll = function () {
+                getLessons(true);
+            };
+
+            $scope.getSearchLesson = function (search) {
+                getSearchLesson(search);
+            };
+
+            $scope.loadMore = function () {
+                if ($scope.search == '' && $scope.lessons && $scope.lessons.length > 0) {
+                    currPage = currPage + 1;
+                    addPageLessons(currPage);
+                }
+            };
+
+            getLessons(false);
+            $scope.selectfilter = {};
+            $scope.selectfilter.level = "all";
+            $scope.search = "";
+        });
+
+        cpodApp.filter('lessonFilter', function () {
+            return function (items, selectLevel) {
+                var shownItems = [];
+                if (selectLevel === 'all') return items;
+                angular.forEach(items, function (item) {
+                    if (item.level.toLowerCase() == selectLevel) {
+                        shownItems.push(item);
+                    }
+                });
+                return shownItems;
+            };
+        });
+
+        cpodApp.directive("myWidget", function () {
+            return {
+                restrict: "E",
+                template: "<img style='width:50px;height:50px' src='http://cdnjs.cloudflare.com/ajax/libs/semantic-ui/0.16.1/images/loader-large.gif' />"
+            };
+        });
+</script>
